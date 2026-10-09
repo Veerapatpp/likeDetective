@@ -11,7 +11,12 @@ export class BlueEnemy extends Physics.Arcade.Sprite {
     bullets = null;
 
     constructor(scene) {
-        super(scene, scene.scale.width + 150, scene.scale.height - 100, "enemy-blue");
+        super(
+            scene,
+            scene.scale.width + 150,
+            scene.scale.height - 100,
+            "enemy-blue",
+        );
         this.scene = scene;
         this.scene.add.existing(this);
         this.scene.physics.add.existing(this);
@@ -24,7 +29,7 @@ export class BlueEnemy extends Physics.Arcade.Sprite {
             duration: 1000,
             ease: Math.Easing.Sine.InOut,
             yoyo: true,
-            repeat: -1
+            repeat: -1,
         });
         this.up_down_tween.pause();
 
@@ -32,7 +37,7 @@ export class BlueEnemy extends Physics.Arcade.Sprite {
         this.bullets = this.scene.physics.add.group({
             classType: Bullet,
             maxSize: 100,
-            runChildUpdate: true
+            runChildUpdate: true,
         });
     }
 
@@ -46,7 +51,7 @@ export class BlueEnemy extends Physics.Arcade.Sprite {
             ease: "Power2",
             onComplete: () => {
                 this.up_down_tween.resume();
-            }
+            },
         });
     }
 
@@ -59,7 +64,6 @@ export class BlueEnemy extends Physics.Arcade.Sprite {
         this.anims.play("hit");
         if (!this.animation_is_playing && this.scale_damage > 1) {
             if (this.damage_life_point === 0) {
-
                 this.animation_is_playing = true;
                 this.scene.tweens.add({
                     targets: this,
@@ -69,7 +73,7 @@ export class BlueEnemy extends Physics.Arcade.Sprite {
                     onComplete: () => {
                         this.damage_life_point = 10;
                         this.animation_is_playing = false;
-                    }
+                    },
                 });
             } else {
                 this.damage_life_point--;
@@ -82,7 +86,5 @@ export class BlueEnemy extends Physics.Arcade.Sprite {
             this.up_down_tween.easing = "Power2";
             this.up_down_tween.x = 10;
         }
-
     }
-
 }

@@ -5,7 +5,7 @@ import { HudScene } from "./scenes/HudScene";
 import { MainScene } from "./scenes/MainScene";
 import { MenuScene } from "./scenes/MenuScene";
 import { SplashScene } from "./scenes/SplashScene";
-import * as Phaser from 'phaser';
+import * as Phaser from "phaser";
 
 // More information about config: https://newdocs.phaser.io/docs/3.70.0/Phaser.Types.Core.GameConfig
 const config = {
@@ -22,13 +22,13 @@ const config = {
     },
     scale: {
         mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH
+        autoCenter: Phaser.Scale.CENTER_BOTH,
     },
     physics: {
         default: "arcade",
         arcade: {
-            gravity: { y: 0 }
-        }
+            gravity: { y: 0 },
+        },
     },
     scene: [
         Preloader,
@@ -36,8 +36,8 @@ const config = {
         MainScene,
         MenuScene,
         HudScene,
-        GameOverScene
-    ]
+        GameOverScene,
+    ],
 };
 
 new Game(config);
