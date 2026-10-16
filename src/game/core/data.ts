@@ -287,8 +287,9 @@ export const LOCATIONS: Record<LocationId, LocationDef> = {
     cemetery: {
         id: "cemetery",
         name: "สุสานเนินเถ้า",
-        cost: 50,
-        sanity: 5,
+        // สถานที่นี้มีเมนู action (ดู LOCATION_ACTIONS) ค่านี้จึงเป็นแค่ค่าเดินทางเข้าไป
+        cost: 15,
+        sanity: 0,
         rumor: "สัปเหร่อบ่นว่ามีคนแอบเข้ามาตอนกลางคืน",
         empty: "หลุมศพเรียงรายเงียบสงบ ไม่มีอะไรถูกรบกวน",
     },
@@ -335,6 +336,105 @@ export const LOCATIONS: Record<LocationId, LocationDef> = {
 };
 
 export const LOCATION_IDS = Object.keys(LOCATIONS) as LocationId[];
+
+// ---------------------------------------------------------------- location actions
+//
+// เมนู action ภายในสถานที่ (แบบเกม Walk of Life): คลิกสถานที่บนแผนที่ = เดินทางเข้าไป
+// (เสียเวลาเดินทางครั้งเดียว) แล้วเลือกได้ว่าจะทำอะไรในนั้น แต่ละ action มีเวลาและสติของตัวเอง
+// ตอนนี้ทำเป็น demo แค่ "สุสานเนินเถ้า" ที่เดียว สถานที่อื่นยังเป็นแบบคลิกครั้งเดียวได้ผลทันที
+// ถ้าจะเพิ่มสถานที่อื่น แค่เพิ่ม entry ใน LOCATION_ACTIONS ไม่ต้องแก้ logic
+
+/** ผลของ action แต่ละแบบ */
+export type LocationActionEffect =
+    // ค้นหาเบาะแส: เผยเบาะแสของ trait ในรายการ ถ้าคดีนี้วาง trait นั้นไว้ที่สถานที่นี้
+    // `hint` คือประโยคที่ action แบบ "hint" จะบอกเมื่อ action นี้มีของให้เจอ
+    | { kind: "search"; traits: TraitId[]; hint: string; empty: string }
+    // ถามคนในพื้นที่: ไม่ได้เบาะแสตรงๆ แต่บอกว่า action "search" ไหนน่าลอง
+    | { kind: "hint"; who: string; empty: string }
+    // พักฟื้น: แลกเวลากับสติที่ได้คืน
+    | { kind: "rest"; sanity: number; text: string };
+
+export interface LocationActionDef {
+    id: string;
+    icon: string;
+    label: string;
+    desc: string;
+    /** เวลาที่ใช้ (นาที) */
+    cost: number;
+    /** สติที่เสียพื้นฐาน (ถ้าเห็นร่องรอยของสิ่งลี้ลับจริง จะเสียเพิ่มอีก 5 เหมือนที่อื่น) */
+    sanity: number;
+    effect: LocationActionEffect;
+}
+
+export interface LocationMenuDef {
+    /** ข้อความตอนเดินทางมาถึง */
+    intro: string;
+    actions: LocationActionDef[];
+}
+
+export const LOCATION_ACTIONS: Partial<Record<LocationId, LocationMenuDef>> = {
+    cemetery: {
+        intro: "ประตูเหล็กของสุสานเนินเถ้าครางเสียงยาวเมื่อคุณผลักเข้าไป แสงตะเกียงในกระท่อมสัปเหร่อยังไม่ดับ ไกลออกไปคือห้องเก็บศพและโบสถ์หลังเล็ก",
+        actions: [
+            {
+                id: "gravedigger",
+                icon: "🏚",
+                label: "คุยกับสัปเหร่อ",
+                desc: "คนที่รู้ทุกอย่างที่เกิดขึ้นในสุสาน ถ้ายอมพูด",
+                cost: 15,
+                sanity: 0,
+                effect: {
+                    kind: "hint",
+                    who: "สัปเหร่อ",
+                    empty: '"คืนนี้เงียบดีครับนาย ไม่มีใครมารบกวนคนตายหรอก"',
+                },
+            },
+            {
+                id: "graves",
+                icon: "⚰",
+                label: "ตรวจหลุมศพใหม่",
+                desc: "เดินดูหลุมที่เพิ่งฝังในสัปดาห์นี้",
+                cost: 25,
+                sanity: 5,
+                effect: {
+                    kind: "search",
+                    traits: ["soil"],
+                    hint: '"หลุมใหม่ทางทิศตะวันตก... ผมกลบไว้เรียบร้อย แต่เช้านี้ดินมันนูนขึ้นมาเองครับ"',
+                    empty: "หลุมศพใหม่ทุกหลุมยังเรียบร้อยดี ดินยังแน่นอยู่",
+                },
+            },
+            {
+                id: "morgue",
+                icon: "🕯",
+                label: "ส่องตะเกียงในห้องเก็บศพ",
+                desc: "ห้องหินเย็นเฉียบที่ศพรอฝังจะถูกเก็บไว้",
+                cost: 25,
+                sanity: 10,
+                effect: {
+                    kind: "search",
+                    traits: ["rot"],
+                    hint: '"อย่าเข้าไปในห้องเก็บศพเลยนาย กลิ่นมันไม่เหมือนศพธรรมดา"',
+                    empty: "ห้องเก็บศพว่างเปล่า มีแต่กลิ่นน้ำยาฟอร์มาลีนจางๆ",
+                },
+            },
+            {
+                id: "chapel",
+                icon: "⛪",
+                label: "นั่งพักในโบสถ์",
+                desc: "แสงเทียนและความเงียบช่วยให้ใจสงบ แต่เวลาก็เดินไปเรื่อยๆ",
+                cost: 20,
+                sanity: 0,
+                effect: {
+                    kind: "rest",
+                    sanity: 15,
+                    text: "คุณนั่งนิ่งอยู่หน้าแท่นบูชา ฟังเสียงเทียนไหม้ จนมือหยุดสั่น",
+                },
+            },
+        ],
+    },
+};
+
+export const locationMenu = (id: LocationId) => LOCATION_ACTIONS[id];
 
 /** The library always offers a lore search that teaches a missing Codex entry. */
 export const LIBRARY_RESEARCH = { cost: 50, sanity: 10 };

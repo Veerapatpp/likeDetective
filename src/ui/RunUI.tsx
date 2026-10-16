@@ -669,6 +669,7 @@ export function Reveal({
                                         {placeLabel(
                                             c.place,
                                             witnessOfClue(c.id),
+                                            c.trait,
                                         )}
                                     </span>
                                 </li>

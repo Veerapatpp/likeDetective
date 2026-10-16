@@ -11,6 +11,8 @@ import {
     CREATURES,
     CreatureId,
     LIBRARY_RESEARCH,
+    LocationActionDef,
+    locationMenu,
     LOCATIONS,
     LocationId,
     PHASE_BUDGET,
@@ -85,6 +87,8 @@ export interface RunState {
     cleared: string | null;
     lastMessage: string;
     outcome: Outcome | null;
+    /** สถานที่ที่ผู้เล่นกำลังอยู่ข้างใน (เปิดเมนู action อยู่) หรือ null ถ้าอยู่ที่แผนที่ */
+    openLocation: LocationId | null;
 }
 
 export interface Result {
@@ -133,16 +137,80 @@ export const startRun = (
         cleared: null,
         lastMessage: "",
         outcome: null,
+        openLocation: null,
     };
 };
 
 export const remaining = (run: RunState) => run.phaseBudget - run.phaseSpent;
+
+// ---------------------------------------------------------------- location menus
+
+/** สถานที่นี้มีเมนู action ให้เลือกไหม (ถ้าไม่มี การ visit = ค้นทั้งที่ในครั้งเดียวแบบเดิม) */
+export const hasMenu = (location: LocationId) => !!locationMenu(location);
+
+/** หา definition ของ action ในเมนูสถานที่ */
+export const findLocationAction = (
+    location: LocationId,
+    id: string,
+): LocationActionDef | undefined =>
+    locationMenu(location)?.actions.find((a) => a.id === id);
+
+/** เบาะแสที่ action แบบ "search" จะเจอ: เฉพาะ trait ในรายการของ action ที่คดีนี้วางไว้ที่สถานที่นี้ */
+const searchClues = (
+    run: RunState,
+    location: LocationId,
+    def: LocationActionDef,
+) =>
+    def.effect.kind === "search"
+        ? cluesAt(run.file, `loc:${location}`).filter(
+              (c) =>
+                  c.trait &&
+                  (def.effect as { traits: TraitId[] }).traits.includes(
+                      c.trait,
+                  ),
+          )
+        : [];
+
+/** action "search" ที่ถูกคนในพื้นที่แนะนำแล้ว (ทำ action "hint" ไปแล้ว และ search นั้นมีของจริง) */
+export const hintedActions = (
+    run: RunState,
+    location: LocationId,
+): string[] => {
+    const menu = locationMenu(location);
+    if (!menu) return [];
+    const asked = menu.actions.some(
+        (a) =>
+            a.effect.kind === "hint" &&
+            run.done.includes(`loc:${location}:${a.id}`),
+    );
+    if (!asked) return [];
+    return menu.actions
+        .filter((a) => searchClues(run, location, a).length > 0)
+        .map((a) => a.id);
+};
+
+/** เปิดเมนูของสถานที่ที่เคยเดินทางไปแล้ว (เข้าซ้ำไม่เสียเวลา) */
+export const openLocation = (run: RunState, location: LocationId): RunState =>
+    run.step === "play" &&
+    run.phase === "clues" &&
+    hasMenu(location) &&
+    run.done.includes(`visit:${location}`)
+        ? { ...run, openLocation: location }
+        : run;
+
+/** ออกจากสถานที่ กลับไปที่แผนที่ */
+export const closeLocation = (run: RunState): RunState => ({
+    ...run,
+    openLocation: null,
+});
 
 // ---------------------------------------------------------------- costs
 
 export type Action =
     | { type: "spot"; spot: SceneSpotId }
     | { type: "visit"; location: LocationId }
+    // action ในเมนูของสถานที่ (ต้อง "visit" สถานที่นั้นก่อน)
+    | { type: "locAction"; location: LocationId; action: string }
     | { type: "research" }
     | { type: "witness"; witness: string }
     | { type: "observe"; suspect: string }
@@ -155,6 +223,8 @@ export const actionKey = (action: Action): string => {
             return `spot:${action.spot}`;
         case "visit":
             return `visit:${action.location}`;
+        case "locAction":
+            return `loc:${action.location}:${action.action}`;
         case "research":
             return "research";
         case "witness":
@@ -166,7 +236,12 @@ export const actionKey = (action: Action): string => {
 
 export const actionPhase = (action: Action): Phase => {
     if (action.type === "spot") return "scene";
-    if (action.type === "visit" || action.type === "research") return "clues";
+    if (
+        action.type === "visit" ||
+        action.type === "locAction" ||
+        action.type === "research"
+    )
+        return "clues";
     return "witness";
 };
 
@@ -187,6 +262,13 @@ export const timeCost = (run: RunState, action: Action): number => {
                 lens -
                 (has(run, "gasLantern") ? 20 : 0);
             break;
+        case "locAction": {
+            const def = findLocationAction(action.location, action.action);
+            // เลนส์ขยายช่วยเฉพาะการค้นหา ไม่ช่วยการคุยหรือการพัก
+            cost =
+                (def?.cost ?? 0) - (def?.effect.kind === "search" ? lens : 0);
+            break;
+        }
         case "research":
             cost =
                 LIBRARY_RESEARCH.cost -
@@ -223,8 +305,18 @@ export const sanityCost = (run: RunState, action: Action): number => {
                 : SCENE_SPOTS[action.spot].sanity;
     if (action.type === "visit") cost = LOCATIONS[action.location].sanity;
     if (action.type === "research") cost = LIBRARY_RESEARCH.sanity;
+    if (action.type === "locAction") {
+        const def = findLocationAction(action.location, action.action);
+        cost = def?.sanity ?? 0;
+        // เห็นร่องรอยจริงของสิ่งลี้ลับ เสียสติเพิ่มเหมือนจุดอื่นๆ
+        if (def && searchClues(run, action.location, def).length) cost += 5;
+    }
     // Seeing the real signature of the thing costs more than an empty room.
-    if (action.type === "spot" || action.type === "visit") {
+    // (สถานที่ที่มีเมนู: แค่เดินทางเข้าไปยังไม่เห็นอะไร จึงไม่บวกเพิ่มตอน visit)
+    if (
+        action.type === "spot" ||
+        (action.type === "visit" && !hasMenu(action.location))
+    ) {
         const place: Place =
             action.type === "spot"
                 ? `scene:${action.spot}`
@@ -242,6 +334,12 @@ export const canDo = (run: RunState, action: Action): Availability => {
         return { ok: false, reason: "ผ่านเฟสนี้ไปแล้ว" };
     if (run.done.includes(actionKey(action)))
         return { ok: false, reason: "ทำไปแล้ว" };
+    if (action.type === "locAction") {
+        if (!findLocationAction(action.location, action.action))
+            return { ok: false, reason: "ไม่มี action นี้" };
+        if (!run.done.includes(`visit:${action.location}`))
+            return { ok: false, reason: "ต้องเดินทางไปก่อน" };
+    }
     if (action.type === "verify" && !run.suspects[action.suspect].alibiAsked)
         return { ok: false, reason: "ต้องถามข้อแก้ตัวก่อน" };
     if (action.type === "verify" && run.suspects[action.suspect].verified)
@@ -253,11 +351,25 @@ export const canDo = (run: RunState, action: Action): Availability => {
 
 // ---------------------------------------------------------------- helpers
 
-export const placeLabel = (place: Place, witnessId?: string): string => {
+export const placeLabel = (
+    place: Place,
+    witnessId?: string,
+    trait?: TraitId,
+): string => {
     if (place.startsWith("scene:"))
         return `ที่เกิดเหตุ · ${SCENE_SPOTS[place.slice(6) as SceneSpotId].label}`;
-    if (place.startsWith("loc:"))
-        return `ในเมือง · ${LOCATIONS[place.slice(4) as LocationId].name}`;
+    if (place.startsWith("loc:")) {
+        const location = place.slice(4) as LocationId;
+        const base = `ในเมือง · ${LOCATIONS[location].name}`;
+        // สถานที่ที่มีเมนู: บอกด้วยว่าต้องทำ action ไหนถึงจะเจอ (ใช้ในหน้าเฉลย "สิ่งที่พลาด")
+        const action = locationMenu(location)?.actions.find(
+            (a) =>
+                a.effect.kind === "search" &&
+                !!trait &&
+                a.effect.traits.includes(trait),
+        );
+        return action ? `${base} · ${action.label}` : base;
+    }
     const witness = WITNESSES.find((w) => w.id === witnessId);
     return `พยาน · ${witness?.name ?? "ไม่ทราบ"}`;
 };
@@ -325,6 +437,17 @@ export const perform = (
     switch (action.type) {
         case "spot":
         case "visit": {
+            // สถานที่ที่มีเมนู: การ visit คือการเดินทางเข้าไปเท่านั้น แล้วเปิดเมนูให้เลือก action
+            // ไม่มีเมนู: ค้นทั้งที่ในครั้งเดียวแบบเดิม (เหมือนการตรวจจุดในที่เกิดเหตุ)
+            if (action.type === "visit" && hasMenu(action.location)) {
+                next = {
+                    ...addNotes(next, LOCATIONS[action.location].name, [
+                        { text: locationMenu(action.location)!.intro },
+                    ]),
+                    openLocation: action.location,
+                };
+                break;
+            }
             const place: Place =
                 action.type === "spot"
                     ? `scene:${action.spot}`
@@ -354,6 +477,64 @@ export const perform = (
                     ...addNotes(next, source, [{ text: haze(next, empty) }]),
                     wasted: [...next.wasted, { label: source, minutes }],
                 };
+            }
+            break;
+        }
+        case "locAction": {
+            const def = findLocationAction(action.location, action.action)!;
+            const source = `${LOCATIONS[action.location].name} · ${def.label}`;
+            const effect = def.effect;
+            if (effect.kind === "search") {
+                const clues = searchClues(run, action.location, def);
+                if (clues.length) {
+                    next = addNotes(
+                        next,
+                        source,
+                        clues.map((c) => ({
+                            text: haze(next, c.text),
+                            clueId: c.id,
+                            trait: c.trait,
+                            eerie: true,
+                        })),
+                    );
+                } else {
+                    // ค้นแล้วไม่เจอ = เสียเวลาเปล่า จะไปโผล่ในหน้าเฉลย "สิ่งที่พลาด"
+                    next = {
+                        ...addNotes(next, source, [
+                            { text: haze(next, effect.empty) },
+                        ]),
+                        wasted: [...next.wasted, { label: source, minutes }],
+                    };
+                }
+            } else if (effect.kind === "hint") {
+                // รวมคำใบ้จากทุก action "search" ในสถานที่นี้ที่มีของให้เจอจริง
+                const menu = locationMenu(action.location)!;
+                const hints = menu.actions
+                    .filter((a) => searchClues(run, action.location, a).length)
+                    .map((a) =>
+                        a.effect.kind === "search" ? a.effect.hint : "",
+                    );
+                next = addNotes(next, `${effect.who}`, [
+                    {
+                        text: haze(
+                            next,
+                            hints.length ? hints.join("\n") : effect.empty,
+                        ),
+                    },
+                ]);
+            } else {
+                // พักฟื้น: ได้สติคืน (ไม่เกินค่าสูงสุด)
+                next = addNotes(
+                    {
+                        ...next,
+                        sanity: Math.min(
+                            next.maxSanity,
+                            next.sanity + effect.sanity,
+                        ),
+                    },
+                    source,
+                    [{ text: `${effect.text} (สติ +${effect.sanity})` }],
+                );
             }
             break;
         }
@@ -482,6 +663,7 @@ export const perform = (
             ...next,
             phase: "accuse",
             step: "play",
+            openLocation: null,
             phaseBudget: 0,
             phaseSpent: 0,
             draft: null,
@@ -547,6 +729,7 @@ const advance = (run: RunState): RunState => {
         phaseSpent: 0,
         phaseBudget: budgetFor(phase, run.perks),
         lastMessage: "",
+        openLocation: null,
     };
 };
 

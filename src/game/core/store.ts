@@ -8,15 +8,18 @@ import {
     loadCodex,
     saveCodex,
 } from "./codex";
-import { CreatureId, TraitId } from "./data";
+import { CreatureId, LocationId, TraitId } from "./data";
 import { CareerId, PerkId } from "./perks";
 import { randomSeed } from "./rng";
 import {
     accuse,
     Action,
     beginPhase,
+    closeLocation,
     endPhase,
     finishRun,
+    hasMenu,
+    openLocation,
     perform,
     pickPerk,
     RunState,
@@ -93,6 +96,18 @@ export class GameStore {
     begin = () => this.withRun((run) => ({ run: beginPhase(run) }));
     act = (action: Action) =>
         this.withRun((run, codex) => perform(run, codex, action));
+    /**
+     * คลิกสถานที่บนแผนที่: ถ้าเป็นสถานที่ที่มีเมนูและเคยไปแล้ว = เปิดเมนูอีกครั้ง (ไม่เสียเวลา)
+     * นอกนั้น = เดินทางไป (ทำ action "visit" ตามปกติ)
+     */
+    enterLocation = (location: LocationId) =>
+        this.withRun((run, codex) =>
+            hasMenu(location) && run.done.includes(`visit:${location}`)
+                ? { run: openLocation(run, location) }
+                : perform(run, codex, { type: "visit", location }),
+        );
+    /** ออกจากสถานที่ กลับไปที่แผนที่ */
+    leaveLocation = () => this.withRun((run) => ({ run: closeLocation(run) }));
     endPhase = () =>
         this.withRun((run, codex) => ({ run: endPhase(run, codex) }));
     pick = (perk: PerkId | null) =>

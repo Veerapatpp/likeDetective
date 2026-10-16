@@ -757,3 +757,84 @@ div.creature {
         padding: 16px;
     }
 }
+
+/* ---------------------------------------------------------------- location menu (เมนู action ในสถานที่) */
+
+.loc-menu {
+    max-width: 680px;
+}
+.loc-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 14px 0;
+}
+.loc-action {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+    background: #0f0e0b;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition:
+        border-color 0.15s,
+        background 0.15s;
+}
+.loc-action:hover:not(:disabled) {
+    border-color: var(--brass);
+    background: #1b1810;
+}
+.loc-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+.loc-action.done {
+    opacity: 0.45;
+}
+.loc-action .icon {
+    font-size: 26px;
+    width: 34px;
+    text-align: center;
+    filter: grayscale(0.6);
+}
+.loc-action .body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.loc-action .body b {
+    font-family: var(--head);
+    font-size: 17px;
+    color: var(--lamp);
+}
+.loc-action .body .muted {
+    font-size: 14px;
+}
+.loc-action .meta {
+    font-size: 12px;
+    color: var(--brass);
+}
+.loc-action .state {
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+}
+.loc-result {
+    padding: 10px 14px;
+    border-left: 3px solid var(--brass);
+    background: #0b0a08;
+    animation: rise2 0.35s ease-out;
+}
+.loc-result .src {
+    font-size: 12px;
+    color: var(--muted);
+}
+.loc-result p {
+    margin: 0;
+    white-space: pre-line;
+}

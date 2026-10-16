@@ -5,7 +5,7 @@ import * as Phaser from "phaser";
 import { LOCATIONS, LocationId, SCENE_SPOTS, SceneSpotId } from "../core/data";
 import { cluesAt } from "../core/caseGen";
 import { GameState, store } from "../core/store";
-import { Action, actionKey, canDo, timeCost } from "../core/run";
+import { Action, actionKey, canDo, hasMenu, timeCost } from "../core/run";
 
 const W = 1280;
 const H = 720;
@@ -430,6 +430,19 @@ export class Stage extends Phaser.Scene {
                 })
                 .setOrigin(0.5, 0);
             this.layer.add([name, rumor]);
+            // ป้ายบอกว่าสถานที่นี้เข้าไปแล้วมีเมนูให้เลือกทำหลายอย่าง
+            if (hasMenu(id)) {
+                const badge = this.add
+                    .text(x + 30, y, "☰ หลายจุดให้สำรวจ", {
+                        fontFamily: FONT,
+                        fontSize: "13px",
+                        color: "#17130b",
+                        backgroundColor: "#c9a45c",
+                        padding: { x: 6, y: 2 },
+                    })
+                    .setOrigin(0, 0.5);
+                this.layer.add(badge);
+            }
             if (
                 compass &&
                 state.run &&
@@ -527,13 +540,25 @@ export class Stage extends Phaser.Scene {
         const spot: Hotspot = { action, label, zone, outline, tag, shape };
         zone.on("pointerover", () => this.hover(spot, true));
         zone.on("pointerout", () => this.hover(spot, false));
-        zone.on("pointerdown", () => store.act(action));
+        // คลิกสถานที่บนแผนที่ส่งไปที่ enterLocation เพื่อให้สถานที่ที่มีเมนูเปิดเมนูซ้ำได้
+        zone.on("pointerdown", () =>
+            action.type === "visit"
+                ? store.enterLocation(action.location)
+                : store.act(action),
+        );
         this.hotspots.push(spot);
     }
 
     private hover(spot: Hotspot, on: boolean) {
         const run = store.get().run;
         if (!run) return;
+        // สถานที่ที่มีเมนูและเคยไปแล้ว: คลิกเพื่อเข้าไปอีกครั้งได้ฟรี
+        if (this.isRevisit(spot)) {
+            spot.tag.setText(`${spot.label} — เข้าไปอีกครั้ง (ไม่เสียเวลา)`);
+            spot.tag.setVisible(on);
+            this.drawOutline(spot, on);
+            return;
+        }
         const check = canDo(run, spot.action);
         const base =
             spot.action.type === "spot"
@@ -541,7 +566,9 @@ export class Stage extends Phaser.Scene {
                 : spot.action.type === "visit"
                   ? LOCATIONS[spot.action.location].sanity
                   : 0;
-        const cost = `${timeCost(run, spot.action)} นาที${base ? " · อาจเสียสติ" : ""}`;
+        const menu =
+            spot.action.type === "visit" && hasMenu(spot.action.location);
+        const cost = `${menu ? "เดินทาง " : ""}${timeCost(run, spot.action)} นาที${base ? " · อาจเสียสติ" : ""}${menu ? " · มีหลายอย่างให้ทำ" : ""}`;
         spot.tag.setText(
             check.ok
                 ? `${spot.label} — ${cost}`
@@ -549,6 +576,17 @@ export class Stage extends Phaser.Scene {
         );
         spot.tag.setVisible(on);
         this.drawOutline(spot, on && check.ok);
+    }
+
+    /** hotspot นี้เป็นสถานที่ที่มีเมนู และผู้เล่นเคยเดินทางไปแล้วหรือยัง */
+    private isRevisit(spot: Hotspot) {
+        const run = store.get().run;
+        return (
+            !!run &&
+            spot.action.type === "visit" &&
+            hasMenu(spot.action.location) &&
+            run.done.includes(actionKey(spot.action))
+        );
     }
 
     private drawOutline(spot: Hotspot, hot: boolean) {
@@ -571,7 +609,9 @@ export class Stage extends Phaser.Scene {
                 spot.action.spot === "bodyDeep" &&
                 !run?.done.includes("spot:body");
             const active = !!run && run.step === "play" && !hidden;
-            spot.zone.input!.enabled = active && !done;
+            // สถานที่ที่มีเมนูยังคลิกได้หลังไปแล้ว (เพื่อกลับเข้าไปทำ action อื่น)
+            spot.zone.input!.enabled =
+                active && (!done || this.isRevisit(spot));
             if (spot.action.type === "spot" && spot.action.spot === "bodyDeep")
                 this.drawDeepButton(spot, hidden, done);
             if (done && !spot.mark) {

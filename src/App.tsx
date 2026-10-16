@@ -12,6 +12,7 @@ import {
     WitnessPanel,
 } from "./ui/RunUI";
 import { CodexView, Title } from "./ui/Screens";
+import { LocationMenu } from "./ui/LocationMenu";
 
 function App() {
     const { screen, codex, run, finish } = useGame();
@@ -26,9 +27,9 @@ function App() {
                 {screen === "codex" && <CodexView codex={codex} />}
                 {inRun && (
                     <>
-                        {run.step === "play" && run.phase === "clues" && (
-                            <ResearchButton run={run} />
-                        )}
+                        {run.step === "play" &&
+                            run.phase === "clues" &&
+                            !run.openLocation && <ResearchButton run={run} />}
                         {run.step === "play" && run.phase === "witness" && (
                             <WitnessPanel run={run} />
                         )}
@@ -39,7 +40,14 @@ function App() {
                                 codex={codex}
                             />
                         )}
-                        <MessageBar run={run} />
+                        {/* เมนู action ของสถานที่ที่ผู้เล่นกำลังอยู่ข้างใน (เฟส 2) */}
+                        {run.step === "play" && run.openLocation && (
+                            <LocationMenu
+                                run={run}
+                                location={run.openLocation}
+                            />
+                        )}
+                        {!run.openLocation && <MessageBar run={run} />}
                         {run.step === "briefing" && <Briefing run={run} />}
                         {run.step === "draft" && <Draft run={run} />}
                         {run.step === "reveal" && (
